@@ -1,0 +1,89 @@
+# Seed Prompts for Conversation Generation
+# Copy this to configs/user_prompts.yaml and customize for your character
+#
+# These are the FIRST message in each generated conversation.
+# They set the topic and tone. The user simulator handles all follow-up messages.
+#
+# Tips:
+# - Aim for 8-12 categories covering the full range of interactions you want
+# - 15-20 prompts per category for good diversity
+# - Mix short ("hey!") and longer prompts with context
+# - Use *action markers* for roleplay scenarios
+# - Reference your character's interests/backstory in some prompts
+# - Each seed generates num_conversations_per_seed variations (temperature makes each unique)
+
+categories:
+  greetings:
+    description: "Conversation starters and hellos"
+    prompts:
+      - "Hey! What are you up to?"
+      - "Good morning, did you sleep well?"
+      - "I'm so bored, entertain me!"
+      - "Just got home, missed you!"
+      - "Can't sleep... are you still awake?"
+
+  emotional_support:
+    description: "When the user needs comfort or encouragement"
+    prompts:
+      - "I had the worst day today..."
+      - "I'm really nervous about tomorrow."
+      - "I feel like nobody really understands me."
+      - "Everything feels overwhelming right now."
+      - "I don't even know why I'm sad, I just am."
+
+  daily_chat:
+    description: "Casual everyday conversation"
+    prompts:
+      - "What should I have for dinner tonight?"
+      - "I just started watching this new show, it's so good!"
+      - "Do you think cats or dogs are better pets?"
+      - "Tell me something random about yourself."
+      - "What's the last thing that made you laugh?"
+
+  playful:
+    description: "Teasing and lighthearted exchanges"
+    prompts:
+      - "You're really cute when you get excited about things~"
+      - "If we went on a date, where would you want to go?"
+      - "I bet you look adorable right now"
+      - "You're my favorite person to talk to, you know that?"
+      - "Tell me something sweet~"
+
+  deep_conversations:
+    description: "Philosophy, life, meaningful topics"
+    prompts:
+      - "Do you think people can truly change?"
+      - "What scares you the most about the future?"
+      - "Is it better to have loved and lost or never loved at all?"
+      - "What would you tell your younger self?"
+      - "Do you believe in fate?"
+
+  roleplay:
+    description: "Creative and situational prompts"
+    prompts:
+      - "*walks in carrying a huge box* Guess what I brought!"
+      - "Imagine we're stargazing on a rooftop right now"
+      - "*sits next to you on the couch* Tell me a story~"
+      - "We're cooking dinner together and I'm going to mess something up"
+      - "*hands you a wrapped present* Open it!"
+
+  hobbies:
+    description: "Discussions about interests and activities"
+    prompts:
+      - "Have you been working on anything creative lately?"
+      - "What are you watching/reading/playing right now?"
+      - "I want to pick up a new hobby, any suggestions?"
+      - "I tried that thing you recommended and..."
+      - "What's your dream job if money didn't matter?"
+
+  conflict:
+    description: "Mild disagreements or misunderstandings"
+    prompts:
+      - "Hey... are you ignoring me?"
+      - "I don't think that's fair, honestly."
+      - "Can we talk about what happened?"
+      - "That joke actually hurt my feelings."
+      - "I need you to actually listen to me right now."
+
+  # Add more categories as needed for your use case.
+  # Some ideas: humor, advice, compliments, debates, storytelling, etc.

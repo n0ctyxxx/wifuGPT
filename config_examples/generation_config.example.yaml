@@ -1,0 +1,40 @@
+# Synthetic Data Generation Configuration
+# Copy this to configs/generation_config.yaml and adjust as needed
+
+# vLLM Server Connection
+# Model name, host, and port are read from .env (VLLM_MODEL, VLLM_HOST, VLLM_PORT)
+vllm:
+  api_key: "EMPTY"    # vLLM default; change if you set one on the server
+
+# Generation parameters for character responses
+# These control how your character talks
+waifu_generation:
+  temperature: 0.85          # 0.7-0.9 recommended. Higher = more creative, lower = more consistent
+  top_p: 0.92               # Nucleus sampling threshold
+  max_tokens: 512            # Max response length (~380 words). Keep it conversational, not essay-length
+  frequency_penalty: 0.1     # Reduces repetitive phrases within a response
+  presence_penalty: 0.05     # Encourages topic diversity within a response
+
+# Generation parameters for user simulator
+# These control how the simulated human user talks
+user_generation:
+  temperature: 0.95          # Higher than character for more diverse user messages
+  top_p: 0.95
+  max_tokens: 256            # User messages are typically shorter than character responses
+  frequency_penalty: 0.15
+  presence_penalty: 0.1
+
+# Conversation structure
+conversation:
+  min_turns: 3               # Minimum turns per conversation (1 turn = user msg + character response)
+  max_turns: 8               # Maximum turns per conversation
+  num_conversations_per_seed: 3   # How many conversations to generate from each seed prompt
+
+# Pipeline settings
+pipeline:
+  concurrency: 16            # Number of conversations generated in parallel. Increase if GPU has headroom.
+                             # For 4x H100: try 32-64. For 1x A100: try 8-16.
+  num_conversations: 500     # Total target number of conversations to generate
+  output_dir: "output"       # Output directory (relative to project root)
+  output_file: "conversations.jsonl"   # Output filename
+  checkpoint_every: 50       # Save progress every N conversations
