@@ -288,23 +288,31 @@ async def run_pipeline(
 ) -> None:
     system_prompt, user_sim_prompt, gen_config, seed_prompts = load_configs(config_dir)
 
-    # vLLM connection from .env
-    vllm_host = os.environ.get("VLLM_HOST", "localhost")
-    vllm_port = os.environ.get("VLLM_PORT", "8000")
-    vllm_model = os.environ["VLLM_MODEL"]
-    base_url = f"http://{vllm_host}:{vllm_port}/v1"
+    # Server connection from .env
+    server_host = os.environ.get("VLLM_HOST", "localhost")
+    server_port = os.environ.get("VLLM_PORT", "8000")
+    base_url = f"http://{server_host}:{server_port}/v1"
 
     client = AsyncOpenAI(
         base_url=base_url,
         api_key=gen_config["vllm"]["api_key"],
     )
-    logger.info("vLLM endpoint: %s (model: %s)", base_url, vllm_model)
+
+    # Auto-detect model name from server (works with both vLLM and llama-cpp-python)
+    import httpx
+    try:
+        resp = httpx.get(f"{base_url}/models", timeout=10)
+        models = resp.json()["data"]
+        model_name = models[0]["id"]
+    except Exception:
+        model_name = os.environ.get("VLLM_MODEL", "default")
+    logger.info("Server endpoint: %s (model: %s)", base_url, model_name)
 
     # Build generators
     wc = gen_config["waifu_generation"]
     waifu = WaifuGenerator(
         client=client,
-        model=vllm_model,
+        model=model_name,
         system_prompt=system_prompt,
         temperature=wc["temperature"],
         top_p=wc["top_p"],
@@ -316,7 +324,7 @@ async def run_pipeline(
     uc = gen_config["user_generation"]
     user_sim = UserSimulator(
         client=client,
-        model=vllm_model,
+        model=model_name,
         system_prompt=user_sim_prompt,
         temperature=uc["temperature"],
         top_p=uc["top_p"],

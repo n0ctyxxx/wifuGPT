@@ -1,13 +1,13 @@
 # Synthetic Chat Data Generator
 
-A pipeline for generating multi-turn synthetic chat conversations using any model served via vLLM. Built for creating fine-tuning datasets for character/companion chatbots.
+A pipeline for generating multi-turn synthetic chat conversations using any model served via an OpenAI-compatible API. Supports both **vLLM** (safetensors models) and **llama-cpp-python** (GGUF models). Built for creating fine-tuning datasets for character/companion chatbots.
 
 ## How It Works
 
 The generator builds conversations **one message at a time** using two roles played by the same model:
 
 ```
-                    Same vLLM server, same model
+               Same server, same model, different system prompts
                     ┌─────────────────────────┐
                     │                         │
 Seed prompt ──────> │  [Character Prompt]     │ ──> Character response
@@ -39,7 +39,7 @@ Multiple conversations (default: 32) run concurrently via async.
 ## Prerequisites
 
 - Python 3.10+
-- A running vLLM server (or any OpenAI-compatible API)
+- An OpenAI-compatible API server (vLLM or llama-cpp-python)
 - GPU(s) with enough VRAM for your chosen model
 
 ### Install dependencies
@@ -48,7 +48,7 @@ Multiple conversations (default: 32) run concurrently via async.
 pip install -r requirements.txt
 ```
 
-vLLM itself is **not** a Python dependency of this script -- it runs as a separate server. The script only needs the `openai` client to talk to it.
+The inference server (vLLM or llama-cpp-python) is **not** a dependency of the generation script -- it runs as a separate server. The script only needs the `openai` client to talk to it.
 
 ## Setup
 
@@ -61,10 +61,16 @@ cp config_examples/.env.example .env
 ```
 
 ```env
+# Common
 VLLM_MODEL="your-org/your-model-name"
 VLLM_HOST="0.0.0.0"
 VLLM_PORT=8000
-# HUGGING_FACE_HUB_TOKEN=hf_xxx  # if model is gated
+
+# For llama-cpp-python (GGUF models)
+GGUF_MODEL_PATH="/path/to/your/model.gguf"
+
+# For gated models
+# HUGGING_FACE_HUB_TOKEN=hf_xxx
 ```
 
 ### 2. Create your config files
@@ -86,15 +92,17 @@ cp config_examples/user_prompts.example.yaml            configs/user_prompts.yam
 | `generation_config.yaml` | Generation parameters (temperature, top_p, etc.), conversation structure (min/max turns), and pipeline settings (concurrency, output path). |
 | `user_prompts.yaml` | Seed prompts organized by category. These are the first user message in each conversation -- they set the topic and tone. |
 
-### 3. Start the vLLM server
+### 3. Start the inference server
 
-Edit `vllm_server.sh` to match your GPU setup (tensor parallel size, memory utilization, etc.), then:
+You have two options depending on your model format:
+
+#### Option A: vLLM (for safetensors/HuggingFace models)
 
 ```bash
-bash vllm_server.sh
+bash data_gen/vllm_server.sh
 ```
 
-**GPU configuration tips:**
+Edit `vllm_server.sh` to match your GPU setup (tensor parallel size, memory utilization, etc.).
 
 | Setup | `--tensor-parallel-size` | Notes |
 |-------|--------------------------|-------|
@@ -103,7 +111,30 @@ bash vllm_server.sh
 | 4x GPU | 4 | Model split across 4 GPUs |
 | 8x GPU | 8 | Model split across 8 GPUs |
 
-For a 27B model in bf16 (~54GB), you need at least 1x A100-80GB or 2x A100-40GB.
+#### Option B: llama-cpp-python (for GGUF models)
+
+First install with CUDA support:
+
+```bash
+CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python[server]
+```
+
+Set `GGUF_MODEL_PATH` in your `.env` to the path of your `.gguf` file, then:
+
+```bash
+bash data_gen/llama_cpp_server.sh
+```
+
+The server auto-detects GPUs and splits the model across all available GPUs. It offloads all layers to GPU (`-ngl -1`) and uses ChatML format.
+
+**Which server to use?**
+
+| | vLLM | llama-cpp-python |
+|---|---|---|
+| Model format | Safetensors (HuggingFace) | GGUF |
+| Throughput | Higher (continuous batching) | Lower (sequential) |
+| Multi-GPU | Tensor parallelism | Layer splitting |
+| Best for | Large-scale generation | GGUF-only models, smaller runs |
 
 Wait until you see the server is ready (it will print the endpoint URL).
 
@@ -134,6 +165,8 @@ python generate.py --config-dir /path/to/your/configs
 ```bash
 python generate.py --output /path/to/output.jsonl
 ```
+
+The script auto-detects the model name from the server, so it works with both vLLM and llama-cpp-python without any config changes.
 
 ## CLI Options
 
@@ -189,6 +222,21 @@ Discarded conversations are logged with the reason. Check your discard rate -- i
 
 Conversations are saved in batches (default: every 50). If the script crashes, you keep everything generated so far. Output uses append mode, so you can safely resume (though you may get duplicates at the boundary -- deduplicate by `metadata.seed_prompt` + `metadata.timestamp` if needed).
 
+## GCP Deployment
+
+A `run_gcp.sh` script is included in the project root for end-to-end runs on GCP VMs:
+
+```bash
+# Copy repo to GCP VM
+gcloud compute scp --recurse ./wifuGPT your-vm:~/wifuGPT
+
+# SSH in and run in tmux
+gcloud compute ssh your-vm
+tmux new-session -s wifugpt 'bash ~/wifuGPT/run_gcp.sh'
+```
+
+`run_gcp.sh` handles everything: sets up a conda env on `/workspace`, downloads the GGUF model, starts the server, runs smoke test + full generation, and uploads results to GCS. Uses `/workspace` for all heavy storage (models, packages, output) to avoid filling the root disk.
+
 ## Creating Your Own Character
 
 The key to good output is a well-written character system prompt. Include:
@@ -222,5 +270,6 @@ More seeds + more `num_conversations_per_seed` = more data. Temperature randomne
 | User simulator is too bland | Increase user simulator temperature, add more variety instructions to user_simulator_prompt.txt |
 | Character breaks ("as an AI") | Strengthen "never break character" rules in system prompt, the quality filter will catch the rest |
 | Conversations end abruptly | Increase `min_turns`, check if `max_tokens` is too low |
-| Generation is slow | Increase `concurrency` (if GPU has headroom), enable `--enable-prefix-caching` on vLLM server |
+| Generation is slow (vLLM) | Increase `concurrency`, enable `--enable-prefix-caching` on server |
+| Generation is slow (llama-cpp) | Use a smaller quantization (Q8_0 or Q4_K_M instead of BF16), reduce `concurrency` to avoid contention |
 | Too many discards | Check logs for the discard reason, tune the relevant parameter |
