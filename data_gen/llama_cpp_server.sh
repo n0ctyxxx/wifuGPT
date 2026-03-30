@@ -42,5 +42,5 @@ python3 -m llama_cpp.server \
     --n_ctx 8192 \
     --n_batch 2048 \
     --chat_format chatml \
-    --split_mode layer \
-    --tensor_split "$TENSOR_SPLIT"
+    --split_mode 1 \
+    --tensor_split $TENSOR_SPLIT

@@ -64,6 +64,14 @@ def load_configs(config_dir: Path) -> tuple[str, str, dict, list[dict]]:
 # ---------------------------------------------------------------------------
 # Quality filters
 # ---------------------------------------------------------------------------
+THINK_TAG_PATTERN = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+def strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> reasoning blocks from model output."""
+    return THINK_TAG_PATTERN.sub("", text).strip()
+
+
 CHARACTER_BREAK_PATTERNS = re.compile(
     r"as an ai|i'm an ai|i am an ai|language model|i'm a program|"
     r"i cannot assist|i can't help with|i'm not able to|"
@@ -151,7 +159,7 @@ class WaifuGenerator:
             frequency_penalty=self.frequency_penalty,
             presence_penalty=self.presence_penalty,
         )
-        return response.choices[0].message.content.strip()
+        return strip_think_tags(response.choices[0].message.content.strip())
 
 
 class UserSimulator:
@@ -207,7 +215,7 @@ class UserSimulator:
             frequency_penalty=self.frequency_penalty,
             presence_penalty=self.presence_penalty,
         )
-        text = response.choices[0].message.content.strip()
+        text = strip_think_tags(response.choices[0].message.content.strip())
         # Clean up any accidental prefixes the model might add
         text = re.sub(r"^(User|Human|Me)\s*:\s*", "", text, flags=re.IGNORECASE)
         return text
@@ -413,6 +421,21 @@ async def run_pipeline(
             total_saved,
             total_discarded,
         )
+
+        # Incremental GCS upload after each batch
+        gcs_bucket = os.environ.get("GCS_BUCKET")
+        gcs_folder = os.environ.get("GCS_FOLDER")
+        if gcs_bucket and gcs_folder:
+            import subprocess
+            gcs_path = f"{gcs_bucket}/{gcs_folder}/conversations.jsonl"
+            try:
+                subprocess.run(
+                    ["gsutil", "cp", str(output_path), gcs_path],
+                    capture_output=True, timeout=60,
+                )
+                logger.info("Uploaded checkpoint to %s", gcs_path)
+            except Exception as e:
+                logger.warning("GCS upload failed (will retry next batch): %s", e)
 
     logger.info(
         "Generation complete. %d conversations saved to %s (%d discarded)",
