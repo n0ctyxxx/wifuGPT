@@ -156,7 +156,7 @@ class WaifuGenerator:
         self.presence_penalty = presence_penalty
 
     async def generate(self, conversation: list[dict]) -> str:
-        """Generate Hana's next response given the conversation so far."""
+        """Generate Hana's next response. Model thinks freely, think tags stripped from result."""
         messages = [{"role": "system", "content": self.system_prompt}] + conversation
         response = await self.client.chat.completions.create(
             model=self.model,
