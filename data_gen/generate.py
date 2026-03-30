@@ -64,12 +64,20 @@ def load_configs(config_dir: Path) -> tuple[str, str, dict, list[dict]]:
 # ---------------------------------------------------------------------------
 # Quality filters
 # ---------------------------------------------------------------------------
-THINK_TAG_PATTERN = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+THINK_TAG_CLOSED = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
 
 def strip_think_tags(text: str) -> str:
-    """Remove <think>...</think> reasoning blocks from model output."""
-    return THINK_TAG_PATTERN.sub("", text).strip()
+    """Remove think blocks from model output.
+    - Closed tags: <think>...</think> → strip the block, keep text after
+    - Unclosed tags: <think>... (no </think>) → entire response is thinking, return empty
+    """
+    # Strip all closed <think>...</think> blocks
+    result = THINK_TAG_CLOSED.sub("", text).strip()
+    # If there's still an unclosed <think> left, everything after it is thinking junk
+    if "<think>" in result:
+        result = result[:result.index("<think>")].strip()
+    return result
 
 
 CHARACTER_BREAK_PATTERNS = re.compile(
@@ -239,6 +247,17 @@ class ConversationPipeline:
         self.min_turns = min_turns
         self.max_turns = max_turns
 
+    @staticmethod
+    async def _generate_with_retry(generator, conversation: list[dict], max_retries: int = 3) -> str:
+        """Call generator.generate() with retries on empty responses."""
+        for attempt in range(max_retries):
+            result = await generator.generate(conversation)
+            if result:
+                return result
+            logger.warning("Empty response (attempt %d/%d), retrying...", attempt + 1, max_retries)
+        logger.warning("All %d retries returned empty", max_retries)
+        return ""
+
     async def generate_conversation(
         self, seed_prompt: str, category: str
     ) -> dict | None:
@@ -251,15 +270,22 @@ class ConversationPipeline:
 
         # Turn 1: use the seed prompt
         conversation.append({"role": "user", "content": seed_prompt})
-        waifu_response = await self.waifu.generate(conversation)
+        waifu_response = await self._generate_with_retry(self.waifu, conversation)
+        if not waifu_response:
+            return None
         conversation.append({"role": "assistant", "content": waifu_response})
 
         # Turns 2..N
         for _ in range(1, num_turns):
-            user_msg = await self.user_sim.generate(conversation)
+            user_msg = await self._generate_with_retry(self.user_sim, conversation)
+            if not user_msg:
+                break  # End conversation early if user sim fails
             conversation.append({"role": "user", "content": user_msg})
 
-            waifu_response = await self.waifu.generate(conversation)
+            waifu_response = await self._generate_with_retry(self.waifu, conversation)
+            if not waifu_response:
+                conversation.pop()  # Remove the dangling user message
+                break
             conversation.append({"role": "assistant", "content": waifu_response})
 
         # Validate
@@ -273,10 +299,7 @@ class ConversationPipeline:
             return None
 
         return {
-            "messages": [
-                {"role": "system", "content": self.waifu.system_prompt},
-                *conversation,
-            ],
+            "messages": conversation,
             "metadata": {
                 "category": category,
                 "seed_prompt": seed_prompt,
